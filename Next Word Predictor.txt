@@ -1,0 +1,115 @@
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.layers import Embedding,LSTM,Dense
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.optimizers import Adam
+import pickle
+import numpy as np
+import os
+
+from google.colab import files
+uploaded=files.upload()
+
+files=open('text_data.txt','r',encoding='utf8')
+# store file in the list
+data_lines=[]
+for i in files:
+  data_lines.append(i)
+# convert the list to string
+data=""
+for i in data_lines:
+  data=' '.join(data_lines)
+
+# replace unnecessary stuff with space
+data=data.replace('\n','').replace('\r','').replace('\ufeff','').replace('"','')
+data=data.split()
+data=' '.join(data)
+data[:500]
+
+len(data)
+tf.test.gpu_device_name()
+tokenizer=Tokenizer()
+tokenizer.fit_on_texts([data])
+
+pickle.dump(tokenizer,open('token.pkl','wb'))
+
+sequence_data=tokenizer.texts_to_sequences([data])[0]
+sequence_data[:10]
+# tokenizer.word_index
+
+len(sequence_data)
+
+sequences=[]
+
+for i in range(2,len(sequence_data)):
+  words=sequence_data[i-2:i+1]
+  sequences.append(words)
+print("The length of sequences are: ",len(sequences))
+sequences=np.array(sequences)
+sequences[:20]
+
+x=[]
+y=[]
+
+for i in sequences:
+  x.append(i[0:2])
+  y.append(i[2])
+
+X=np.array(x)
+Y=np.array(y)
+
+vocab_size=len(tokenizer.word_index)+1
+Y=to_categorical(Y,num_classes=vocab_size) # converting to matrix
+Y[:8]
+
+model=Sequential()
+model.add(Embedding(vocab_size,10,input_length=2))
+model.add(LSTM(1000,return_sequences=True))
+model.add(LSTM(1000))
+model.add(Dense(1000,activation="relu"))
+model.add(Dense(vocab_size,activation="softmax"))
+
+model.summary()
+
+from tensorflow.keras.utils import plot_model
+
+plot_model(model,to_file='plot.png',show_layer_names=True)
+
+from tensorflow.keras.callbacks import ModelCheckpoint
+
+checkpoint=ModelCheckpoint("next_words.h5",monitor='loss',verbose=1,save_best_only=True)
+model.compile(loss='categorical_crossentropy',optimizer='Adam')
+
+model.fit(X,Y,epochs=80,batch_size=55,callbacks=[checkpoint])
+
+
+from tensorflow.keras.models import load_model
+model=load_model('next_words.h5')
+tokenizer=pickle.load(open('token.pkl','rb'))
+
+def predict_next_word(model,tokenizer,text):
+  sequence=tokenizer.texts_to_sequences([text])
+  sequence=np.array(sequence)
+  pred=np.argmax(model.predict(sequence))
+  predicted_word=""
+
+  for key,value in tokenizer.word_index.items():
+    if value==pred:
+      predicted_word=key
+      break
+  print(predicted_word)
+while(True):
+  text=input("Enter your line: ")
+  if text=="0":
+    print("execution completed...")
+    break
+  else:
+    try:
+      text=text.split(" ")
+      text=text[-3:]
+      print(text)
+      predict_next_word(model,tokenizer,text)
+    except Exception as e:
+      print("Error occured: ",e)
+      continue
